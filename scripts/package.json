@@ -1,0 +1,13 @@
+{
+  "name": "bmw-care-scripts",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "connect": "tsx connect-simulator.ts"
+  },
+  "devDependencies": {
+    "playwright": "^1.48.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.8.0"
+  }
+}

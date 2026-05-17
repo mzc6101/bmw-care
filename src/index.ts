@@ -255,7 +255,11 @@ const weeklyDigest = worker.database("weeklyDigest", {
 			"Items DUE": Schema.number(),
 			"Items SOON": Schema.number(),
 			"Top Action": Schema.richText(),
+			"Top OVERDUE Items": Schema.richText(),
+			"Top DUE Items": Schema.richText(),
+			"Top SOON Items": Schema.richText(),
 			Summary: Schema.richText(),
+			Headline: Schema.richText(),
 			"Generated At": Schema.date(),
 		},
 	},
@@ -707,6 +711,29 @@ worker.sync("weeklyDigestSync", {
 				due[0]?.rule.name ??
 				soon[0]?.rule.name ??
 				"On track — no service due in the near term.";
+			const topOverdueItems = overdue
+				.slice(0, 3)
+				.map((p) => `${p.rule.name} (by ${p.overdueByMiles} mi)`)
+				.join(", ");
+			const topDueItems = due
+				.slice(0, 3)
+				.map((p) => p.rule.name)
+				.join(", ");
+			const topSoonItems = soon
+				.slice(0, 3)
+				.map(
+					(p) =>
+						`${p.rule.name} (at ${p.projectedNextDueMileage} mi)`,
+				)
+				.join(", ");
+			const headline =
+				overdue.length > 0
+					? `${overdue[0].rule.name} is overdue by ${overdue[0].overdueByMiles} miles`
+					: due.length > 0
+						? `${due[0].rule.name} is due now`
+						: soon.length > 0
+							? `${soon[0].rule.name} coming up at ${soon[0].projectedNextDueMileage} mi`
+							: "All services on track";
 			const fuelLine =
 				snap.powertrain === "ICE"
 					? `Fuel ${snap.fuelPct ?? 0}% (~${snap.fuelRangeMi ?? 0} mi). Oil life ${snap.oilLifePct ?? 0}%.`
@@ -758,6 +785,10 @@ worker.sync("weeklyDigestSync", {
 					"Items DUE": Builder.number(counts.DUE),
 					"Items SOON": Builder.number(counts.SOON),
 					"Top Action": Builder.richText(topAction),
+					"Top OVERDUE Items": Builder.richText(topOverdueItems),
+					"Top DUE Items": Builder.richText(topDueItems),
+					"Top SOON Items": Builder.richText(topSoonItems),
+					Headline: Builder.richText(headline),
 					Summary: Builder.richText(summary),
 					"Generated At": Builder.dateTime(now.toISOString()),
 				},

@@ -106,19 +106,6 @@ ntn workers exec logService -d '{
 }'
 ```
 
-## Verified end-to-end
-
-Tested at the hackathon with a simulated BMW (VIN `3SC1134B1XMXS04E7`, 2026, ICE, 48,735 mi):
-
-- ✅ M2M Bearer auth at `iam.smartcar.com`
-- ✅ V3 `/connections` returns the simulator vehicle
-- ✅ V3 `/signals` returns 54 fields (odometer, fuel, oil life, location, tires, diagnostics, service-records)
-- ✅ All 7 syncs HEALTHY, data populated in Notion
-- ✅ Health derivation: built-in 2023 oil-change record at 28,107 mi feeds into "last service mileage" for the oil rule
-- ✅ Tools return correct projections — `overall_health: red` (some items DUE at current 48k mi vs. 30k air filter / 60k spark plug intervals)
-- ✅ `canIMakeIt 380` correctly reports short by 177 mi for an LA-style trip
-- ✅ Dashboard page live in Notion with links to all 7 databases
-
 ## Known limits
 
 - **Tire pressure units**: Smartcar simulator returns small numbers (32, 35) labeled kPa. Real BMWs report 220–250 kPa. Alert thresholds (220 kPa) work correctly with real data; the simulator's labels are just inconsistent.

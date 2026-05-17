@@ -228,6 +228,39 @@ const vehicleHealth = worker.database("vehicleHealth", {
 	},
 });
 
+const weeklyDigest = worker.database("weeklyDigest", {
+	type: "managed",
+	initialTitle: "Weekly Digest",
+	primaryKeyProperty: "Digest ID",
+	schema: {
+		properties: {
+			"Digest ID": Schema.title(),
+			VIN: Schema.richText(),
+			"Week Ending": Schema.date(),
+			"Overall Health": Schema.select([
+				{ name: "green", color: "green" },
+				{ name: "yellow", color: "yellow" },
+				{ name: "red", color: "red" },
+			]),
+			Powertrain: Schema.select([
+				{ name: "ICE", color: "gray" },
+				{ name: "EV", color: "green" },
+				{ name: "PHEV", color: "purple" },
+			]),
+			"Current Mileage": Schema.number(),
+			"Fuel %": Schema.number(),
+			"Oil Life %": Schema.number(),
+			"Battery %": Schema.number(),
+			"Items OVERDUE": Schema.number(),
+			"Items DUE": Schema.number(),
+			"Items SOON": Schema.number(),
+			"Top Action": Schema.richText(),
+			Summary: Schema.richText(),
+			"Generated At": Schema.date(),
+		},
+	},
+});
+
 const vehicleHealthSummary = worker.database("vehicleHealthSummary", {
 	type: "managed",
 	initialTitle: "Vehicle Health Summary",
@@ -614,6 +647,119 @@ worker.sync("vehicleHealthRollup", {
 					"Items OVERDUE": Builder.number(counts.OVERDUE),
 					"Current Mileage": Builder.number(snap.mileageMi),
 					"Last Updated": Builder.dateTime(now.toISOString()),
+				},
+			});
+		}
+		return { changes, hasMore: false };
+	},
+});
+
+worker.sync("weeklyDigestSync", {
+	database: weeklyDigest,
+	mode: "incremental",
+	schedule: "7d",
+	execute: async () => {
+		const fleet = await gatherFleet();
+		const now = new Date();
+		const weekEndStr = now.toISOString().slice(0, 10);
+		const changes = [];
+		for (const { snap } of fleet) {
+			const powertrain: Powertrain =
+				snap.powertrain === "PHEV" ? "Both" : snap.powertrain;
+			const applicable = rulesFor(powertrain);
+			const records = recordsFor(snap);
+			const projections = applicable.map((rule) => {
+				const last = findLatestServiceForRule(rule, records);
+				return projectMaintenance(
+					rule,
+					snap.mileageMi,
+					now,
+					last?.odometerMi ?? null,
+					last
+						? new Date(last.timeMs).toISOString().slice(0, 10)
+						: null,
+				);
+			});
+			const overall = aggregateHealth(projections);
+			const overdue = projections
+				.filter((p) => p.status === "OVERDUE")
+				.sort((a, b) => b.overdueByMiles - a.overdueByMiles);
+			const due = projections.filter((p) => p.status === "DUE");
+			const soon = projections
+				.filter((p) => p.status === "SOON")
+				.sort(
+					(a, b) =>
+						(a.projectedNextDueMileage ?? Infinity) -
+						(b.projectedNextDueMileage ?? Infinity),
+				);
+			const counts = projections.reduce(
+				(acc, p) => {
+					acc[p.status] += 1;
+					return acc;
+				},
+				{ OK: 0, SOON: 0, DUE: 0, OVERDUE: 0 } as Record<
+					"OK" | "SOON" | "DUE" | "OVERDUE",
+					number
+				>,
+			);
+			const topAction =
+				overdue[0]?.rule.name ??
+				due[0]?.rule.name ??
+				soon[0]?.rule.name ??
+				"On track — no service due in the near term.";
+			const fuelLine =
+				snap.powertrain === "ICE"
+					? `Fuel ${snap.fuelPct ?? 0}% (~${snap.fuelRangeMi ?? 0} mi). Oil life ${snap.oilLifePct ?? 0}%.`
+					: snap.powertrain === "EV"
+						? `Battery ${snap.batteryPct ?? 0}% (~${snap.batteryRangeMi ?? 0} mi).`
+						: `Fuel ${snap.fuelPct ?? 0}% / Battery ${snap.batteryPct ?? 0}%.`;
+			const summary = [
+				`Week ending ${weekEndStr}.`,
+				`Mileage: ${snap.mileageMi.toLocaleString()} mi.`,
+				fuelLine,
+				overdue.length > 0
+					? `OVERDUE: ${overdue
+							.slice(0, 3)
+							.map((p) => `${p.rule.name} (by ${p.overdueByMiles} mi)`)
+							.join(", ")}.`
+					: "",
+				due.length > 0
+					? `Due now: ${due
+							.slice(0, 3)
+							.map((p) => p.rule.name)
+							.join(", ")}.`
+					: "",
+				soon.length > 0
+					? `Coming up: ${soon
+							.slice(0, 3)
+							.map(
+								(p) =>
+									`${p.rule.name} at ${p.projectedNextDueMileage} mi`,
+							)
+							.join(", ")}.`
+					: "",
+			]
+				.filter(Boolean)
+				.join(" ");
+			changes.push({
+				type: "upsert" as const,
+				key: `${snap.vin}_${weekEndStr}`,
+				properties: {
+					"Digest ID": Builder.title(`${snap.vin} — ${weekEndStr}`),
+					VIN: Builder.richText(snap.vin),
+					"Week Ending": Builder.date(weekEndStr),
+					"Overall Health": Builder.select(overall),
+					Powertrain: Builder.select(snap.powertrain),
+					"Current Mileage": Builder.number(snap.mileageMi),
+					"Fuel %": Builder.number(snap.fuelPct ?? 0),
+					"Oil Life %": Builder.number(snap.oilLifePct ?? 0),
+					"Battery %": Builder.number(snap.batteryPct ?? 0),
+					"Items OVERDUE": Builder.number(counts.OVERDUE),
+					"Items DUE": Builder.number(counts.DUE),
+					"Items SOON": Builder.number(counts.SOON),
+					"Top Action": Builder.richText(topAction),
+					Summary: Builder.richText(summary),
+					"Generated At": Builder.dateTime(now.toISOString()),
 				},
 			});
 		}

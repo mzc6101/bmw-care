@@ -132,6 +132,11 @@ src/
   index.ts        ← Worker (7 syncs + 4 tools + 1 webhook + 1 pacer)
   smartcar.ts     ← Smartcar V3 client: M2M auth, /v3/connections, /v3/vehicles/{id}/signals → typed Snapshot
   maintenance.ts  ← BMW rule definitions + projectMaintenance + findLatestServiceForRule + aggregateHealth
+cf-webhook-proxy/  ← Cloudflare Worker that handles Smartcar VERIFY (HMAC) and forwards events to Notion
 scripts/
   connect-simulator.ts  ← Playwright Connect-flow automation (legacy fallback)
 ```
+
+## Why CF Worker (not Railway) for the webhook proxy
+
+The whole stack runs on Notion's serverless platform — no servers, no infra. The one piece that needs an external HTTP endpoint is Smartcar's webhook VERIFY handshake (Notion Workers can't return custom response bodies). For that, Cloudflare Workers is free, edge-runtime, ~30 lines, and matches the no-infra ethos. Railway would be a $5/mo always-on container massively over-provisioned for ~1 verification request and an occasional event.

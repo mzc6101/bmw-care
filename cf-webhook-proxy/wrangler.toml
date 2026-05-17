@@ -1,0 +1,7 @@
+name = "bmw-care-webhook-proxy"
+main = "src/index.ts"
+compatibility_date = "2026-05-17"
+
+# Secrets (set via `wrangler secret put <NAME>`):
+#   APPLICATION_MANAGEMENT_TOKEN  — Smartcar Application Management Token (Configuration → API credentials)
+#   NOTION_WEBHOOK_URL            — Full URL printed by `ntn workers webhooks ls`
